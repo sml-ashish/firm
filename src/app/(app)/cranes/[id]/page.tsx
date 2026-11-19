@@ -119,7 +119,7 @@ export default async function CraneDetailPage({ params }: { params: Promise<{ id
               <div className="rounded-lg border border-line bg-panel-2 p-3">
                 <div className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-ink"><Building2 size={14} /> Sales check</div>
                 <Row label="Marketability" value={crane.sales.marketable ?? "Not submitted"} />
-                <Row label="NRG" value={crane.sales.nrg === null ? "Not submitted" : crane.sales.nrg ? "Yes" : "No"} />
+                <Row label="NRG / RG (system, from upload)" value={crane.sales.nrg === null ? "Not classified" : crane.sales.nrg ? "NRG" : "RG"} />
                 <Row label="Expected deployment" value={crane.sales.expectedMonths ? `${crane.sales.expectedMonths} months` : "—"} />
                 <Row label="Remarks" value={crane.sales.remarks ?? "—"} />
                 <Row label="Submitted" value={crane.sales.submittedBy ? `${crane.sales.submittedBy} · ${crane.sales.submittedAt}` : "—"} />

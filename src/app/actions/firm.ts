@@ -93,16 +93,17 @@ export async function craneAction(_prev: ActionState, formData: FormData): Promi
       if (crane.status !== "S01") throw new Error("Sales checks are only open at S01.");
       crane.sales = {
         marketable: String(formData.get("marketable") ?? "Marketable") as "Marketable" | "Not marketable",
-        nrg: String(formData.get("nrg") ?? "false") === "true",
+        nrg: crane.sales.nrg,
         expectedMonths: Number(formData.get("expectedMonths") ?? 0) || null,
         remarks: comment || null,
         submittedBy: actor,
         submittedAt: at,
       };
-      crane.flags.nrg = crane.sales.nrg ?? false;
+      // NRG/RG is set by the system at upload (utilisation < 60% and yield < 1.8%).
+      // Sales cannot change it; the flag is preserved for Finance dedup (§4).
       crane.finalCategory = null;
       crane.finalOverride = null;
-      crane.audit.unshift({ id: entryId("a"), actor, actorRole: user.role as Role, action: "Sales check submitted", detail: `${crane.equipmentId} · marketable ${crane.sales.marketable}, NRG ${crane.sales.nrg}`, at });
+      crane.audit.unshift({ id: entryId("a"), actor, actorRole: user.role as Role, action: "Sales check submitted", detail: `${crane.equipmentId} · marketable ${crane.sales.marketable} · NRG/RG ${crane.sales.nrg ? "NRG" : "RG"} (system, from upload)`, at });
       if (crane.maintenance.submittedBy) {
         crane.status = "S02";
         message = "Both checks are in. Crane moved to Finance review (S02).";
@@ -510,6 +511,137 @@ export async function craneAction(_prev: ActionState, formData: FormData): Promi
   return { ok: message };
 }
 
+/** Sales: apply one review to several S01 cranes in a single action. */
+export async function bulkSalesReviewAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const user = await requireUser();
+  if (user.role !== "SALES") {
+    return { error: "Only the Sales team can review cranes in bulk." };
+  }
+
+  let ids: string[] = [];
+  try {
+    const raw: unknown = JSON.parse(String(formData.get("craneIds") ?? "[]"));
+    if (Array.isArray(raw)) ids = raw.filter((value): value is string => typeof value === "string");
+  } catch {
+    return { error: "Invalid crane selection." };
+  }
+  if (ids.length === 0) return { error: "Select at least one crane." };
+  if (ids.length > 200) return { error: "Select at most 200 cranes at a time." };
+
+  const marketable = String(formData.get("marketable") ?? "").trim();
+  if (!["Marketable", "Not marketable"].includes(marketable)) {
+    return { error: "Select a marketability value." };
+  }
+  const expectedMonths = Number(formData.get("expectedMonths") ?? 0) || null;
+  const comment = String(formData.get("comment") ?? "").trim();
+
+  let reviewed = 0;
+  await mutate((state) => {
+    const targets = ids.map((id) =>
+      state.cranes.find((crane) => crane.id === id || crane.equipmentId === id),
+    );
+    if (targets.some((crane) => !crane)) throw new Error("One or more cranes were not found.");
+    if (targets.some((crane) => (crane as Crane).status !== "S01")) {
+      throw new Error("Only cranes at S01 (Pending Validation) can be reviewed in bulk.");
+    }
+
+    const at = now();
+    const actor = user.name;
+    for (const crane of targets as Crane[]) {
+      // NRG/RG is the system classification from upload and cannot be changed.
+      crane.sales = {
+        marketable: marketable as "Marketable" | "Not marketable",
+        nrg: crane.sales.nrg,
+        expectedMonths,
+        remarks: comment || null,
+        submittedBy: actor,
+        submittedAt: at,
+      };
+      crane.finalCategory = null;
+      crane.finalOverride = null;
+      crane.audit.unshift({
+        id: entryId("a"), actor, actorRole: user.role as Role,
+        action: "Sales check submitted (bulk)",
+        detail: `${crane.equipmentId} · marketable ${marketable} · NRG/RG ${crane.sales.nrg ? "NRG" : "RG"} (system, from upload)`,
+        at,
+      });
+      if (crane.maintenance.submittedBy) crane.status = "S02";
+      reviewed += 1;
+    }
+  });
+
+  revalidatePath("/");
+  revalidatePath("/cranes");
+  revalidatePath("/approvals");
+  return { ok: `${reviewed} crane${reviewed === 1 ? "" : "s"} reviewed by Sales.` };
+}
+
+/** Maintenance: apply the same deployability review to several S01 cranes. */
+export async function bulkMaintenanceReviewAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const user = await requireUser();
+  if (user.role !== "MAINTENANCE") {
+    return { error: "Only the Maintenance team can review cranes in bulk." };
+  }
+
+  let ids: string[] = [];
+  try {
+    const raw: unknown = JSON.parse(String(formData.get("craneIds") ?? "[]"));
+    if (Array.isArray(raw)) ids = raw.filter((value): value is string => typeof value === "string");
+  } catch {
+    return { error: "Invalid crane selection." };
+  }
+  if (ids.length === 0) return { error: "Select at least one crane." };
+  if (ids.length > 200) return { error: "Select at most 200 cranes at a time." };
+
+  const rawDeployable = String(formData.get("deployable") ?? "");
+  if (!["true", "false"].includes(rawDeployable)) {
+    return { error: "Select Deployable or Non-Deployable." };
+  }
+  const deployable = rawDeployable === "true";
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (!deployable && !reason) {
+    return { error: "A reason is mandatory when a crane is marked Non-Deployable." };
+  }
+
+  let reviewed = 0;
+  await mutate((state) => {
+    const targets = ids.map((id) =>
+      state.cranes.find((crane) => crane.id === id || crane.equipmentId === id),
+    );
+    if (targets.some((crane) => !crane)) throw new Error("One or more cranes were not found.");
+    if (targets.some((crane) => (crane as Crane).status !== "S01")) {
+      throw new Error("Only cranes at S01 (Pending Validation) can be reviewed in bulk.");
+    }
+
+    const at = now();
+    const actor = user.name;
+    for (const crane of targets as Crane[]) {
+      crane.maintenance = {
+        deployable,
+        reason: deployable ? null : reason,
+        submittedBy: actor,
+        submittedAt: at,
+      };
+      crane.flags.nonDeployable = !deployable;
+      crane.finalCategory = null;
+      crane.finalOverride = null;
+      crane.audit.unshift({
+        id: entryId("a"), actor, actorRole: user.role as Role,
+        action: "Maintenance check submitted (bulk)",
+        detail: `${crane.equipmentId} · ${deployable ? "Deployable" : `Non-Deployable · ${reason}`}`,
+        at,
+      });
+      if (crane.sales.submittedBy) crane.status = "S02";
+      reviewed += 1;
+    }
+  });
+
+  revalidatePath("/");
+  revalidatePath("/cranes");
+  revalidatePath("/approvals");
+  return { ok: `${reviewed} crane${reviewed === 1 ? "" : "s"} reviewed by Maintenance.` };
+}
+
 /** Finance: finalise and route every S02 crane in the open cycle at once. */
 export async function finaliseAllAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const user = await requireUser();
@@ -560,7 +692,7 @@ export async function finaliseAllAction(_prev: ActionState, formData: FormData):
 
 export type ValidateState = {
   preview?: {
-    rows: { equipmentId: string; description: string; yom: number; yieldPct: number; utilisationPct: number; age: number; oldFleet: boolean; soNumber: string | null; soEnd: string | null }[];
+    rows: { equipmentId: string; description: string; yom: number; yieldPct: number; utilisationPct: number; age: number; oldFleet: boolean; nrg: boolean; soNumber: string | null; soEnd: string | null }[];
     issues: { severity: string; row: number | null; field: string | null; message: string }[];
     errorCount: number;
     warningCount: number;
@@ -583,6 +715,7 @@ export async function validateFleetAction(_prev: ValidateState, formData: FormDa
         utilisationPct: row.utilisationPct,
         age: row.age,
         oldFleet: row.oldFleet,
+        nrg: row.nrg,
         soNumber: row.soNumber,
         soEnd: row.soEnd,
       })),
@@ -599,6 +732,8 @@ export async function uploadFleetAction(_prev: ActionState, formData: FormData):
   if (!["FPNA", "GLOBAL_ADMIN"].includes(user.role)) {
     return { error: "Only FP&A can start a cycle and upload the fleet." };
   }
+  const cycleId = String(formData.get("cycleId") ?? "").trim();
+  if (!cycleId) return { error: "Select a cycle to upload into first." };
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return { error: "Choose an Excel workbook." };
 
@@ -610,14 +745,13 @@ export async function uploadFleetAction(_prev: ActionState, formData: FormData):
 
   let added = 0;
   await mutate((state) => {
-    const cycle = state.cycles.find((entry) => entry.status === "OPEN");
-    if (!cycle) throw new Error("No open cycle available. Start or reopen a cycle before uploading.");
-    if (cycle.status === "CLOSED") throw new Error("This cycle is stopped. No changes are allowed.");
+    const cycle = state.cycles.find((entry) => entry.id === cycleId);
+    if (!cycle) throw new Error("Cycle not found.");
+    if (cycle.status !== "OPEN") throw new Error("This cycle is stopped. No changes are allowed.");
     const at = now();
     if (!cycle.startDate) cycle.startDate = at.slice(0, 10);
     for (const row of parsed.rows) {
       if (state.cranes.some((c) => c.equipmentId === row.equipmentId)) continue;
-      const result = dedupe({ oldFleet: row.oldFleet, nrg: false, nonDeployable: false });
       const crane: Crane = {
         id: row.equipmentId,
         equipmentId: row.equipmentId,
@@ -629,7 +763,7 @@ export async function uploadFleetAction(_prev: ActionState, formData: FormData):
         oldFleet: row.oldFleet,
         cycleId: cycle.id,
         status: "S01",
-        flags: { oldFleet: row.oldFleet, nrg: false, nonDeployable: false },
+        flags: { oldFleet: row.oldFleet, nrg: row.nrg, nonDeployable: false },
         finalCategory: null,
         finalOverride: null,
         sap: {
@@ -639,7 +773,7 @@ export async function uploadFleetAction(_prev: ActionState, formData: FormData):
           soEnd: row.soEnd ?? null,
           assetTransferNo: null,
         },
-        sales: { marketable: null, nrg: null, expectedMonths: null, remarks: null, submittedBy: null, submittedAt: null },
+        sales: { marketable: null, nrg: row.nrg, expectedMonths: null, remarks: null, submittedBy: null, submittedAt: null },
         maintenance: { deployable: null, reason: null, submittedBy: null, submittedAt: null },
         buQuotes: [],
         award: null,
@@ -648,7 +782,7 @@ export async function uploadFleetAction(_prev: ActionState, formData: FormData):
         claimBack: null,
         conflict: null,
         approvals: [],
-        audit: [{ id: entryId("a"), actor: user.name, actorRole: user.role as Role, action: "Fleet uploaded", detail: `${row.equipmentId} · age ${row.age} · Old Fleet ${row.oldFleet} · SO ${row.soNumber ?? "none"} · result ${result.category}`, at }],
+        audit: [{ id: entryId("a"), actor: user.name, actorRole: user.role as Role, action: "Fleet uploaded", detail: `${row.equipmentId} · age ${row.age} · Old Fleet ${row.oldFleet} · NRG/RG ${row.nrg ? "NRG" : "RG"} (util ${row.utilisationPct}%, yield ${row.yieldPct}%) · SO ${row.soNumber ?? "none"}`, at }],
       };
       state.cranes.push(crane);
       added += 1;
@@ -703,4 +837,41 @@ export async function updateCycleAction(_prev: ActionState, formData: FormData):
   revalidatePath("/cycles");
   revalidatePath(`/cycles/${cycleId}`);
   return { ok: rawStatus === "CLOSED" ? "Cycle stopped. No further changes are allowed." : "Cycle updated." };
+}
+
+/** FP&A opens a FIRM cycle with its start and end dates before uploading any fleet. */
+export async function createCycleAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const user = await requireUser();
+  if (!["FPNA", "GLOBAL_ADMIN"].includes(user.role)) {
+    return { error: "Only FP&A can create a FIRM cycle." };
+  }
+  const name = String(formData.get("name") ?? "").trim();
+  const startDate = String(formData.get("startDate") ?? "").trim();
+  const endDate = String(formData.get("endDate") ?? "").trim();
+  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+
+  if (!name) return { error: "Enter a name for the cycle." };
+  if (!datePattern.test(startDate)) return { error: "Start date is required (YYYY-MM-DD)." };
+  if (!datePattern.test(endDate)) return { error: "End date is required (YYYY-MM-DD)." };
+  if (endDate < startDate) return { error: "End date cannot be before start date." };
+
+  await mutate((state) => {
+    const openedAt = now();
+    state.cycles.push({
+      id: `C-${Date.now()}`,
+      name,
+      openedAt,
+      openedBy: user.name,
+      evaluationDate: endDate,
+      startDate,
+      endDate,
+      status: "OPEN",
+    });
+  });
+
+  revalidatePath("/");
+  revalidatePath("/cranes");
+  revalidatePath("/cycles");
+  revalidatePath("/import");
+  return { ok: `Cycle "${name}" created. You can now upload cranes into it.` };
 }

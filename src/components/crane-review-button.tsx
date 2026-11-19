@@ -3,6 +3,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { ActionForm } from "@/components/approval-actions";
+import { SalesReviewFields } from "@/components/sales-review-fields";
 
 type ReviewCrane = {
   id: string;
@@ -64,35 +65,11 @@ export function CraneReviewButton({
                 label={submitted ? "Update sales check" : "Submit sales check"}
                 role={role}
                 extra={
-                  <>
-                    <select
-                      name="marketable"
-                      defaultValue={crane.marketable ?? "Marketable"}
-                      className="select h-9 w-full"
-                      aria-label="Marketability"
-                    >
-                      <option>Marketable</option>
-                      <option>Not marketable</option>
-                    </select>
-                    <select
-                      name="nrg"
-                      defaultValue={crane.nrg ? "true" : "false"}
-                      className="select h-9 w-full"
-                      aria-label="NRG"
-                    >
-                      <option value="false">NRG: No</option>
-                      <option value="true">NRG: Yes</option>
-                    </select>
-                    <input
-                      name="expectedMonths"
-                      type="number"
-                      min="0"
-                      defaultValue={crane.expectedMonths ?? ""}
-                      placeholder="Duration (months)"
-                      className="input h-9 w-full"
-                      aria-label="Expected deployment duration (months)"
-                    />
-                  </>
+                  <SalesReviewFields
+                    marketable={crane.marketable}
+                    expectedMonths={crane.expectedMonths}
+                    nrg={crane.nrg}
+                  />
                 }
               />
             ) : (

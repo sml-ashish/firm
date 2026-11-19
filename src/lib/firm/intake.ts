@@ -12,7 +12,7 @@
  */
 
 import * as XLSX from "xlsx";
-import type { UPLOAD_FIELDS } from "./workflow";
+import { isNrg, type UPLOAD_FIELDS } from "./workflow";
 
 /** Section 11 — the five crane fields plus manually entered SAP / SO fields. */
 export const FIRM_HEADERS = [
@@ -36,6 +36,8 @@ export interface FirmParsedRow {
   utilisationPct: number;
   age: number;
   oldFleet: boolean;
+  /** System classification: NRG when utilisation < 60% and yield < 1.8%, else RG. */
+  nrg: boolean;
   sapStatus: string;
   soNumber: string | null;
   soStart: string | null;
@@ -465,6 +467,7 @@ export function parseFirmWorkbook(buffer: Buffer): FirmParseResult {
       utilisationPct: utilisationPct as number,
       age,
       oldFleet: age >= 15,
+      nrg: isNrg(yieldPct as number, utilisationPct as number),
       sapStatus,
       soNumber,
       soStart,

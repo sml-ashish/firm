@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useRef, useState, useTransition } from "react";
+import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import { CheckCircle2, CircleAlert, FileSpreadsheet, UploadCloud } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -12,30 +12,76 @@ const FIRM_HEADERS = [
   "SAP Status", "SO Number", "SO Start Date", "SO End Date",
 ] as const;
 
-export function ImportWizard({ role }: { role: string }) {
+export type OpenCycleOption = {
+  id: string;
+  name: string;
+  startDate: string | null;
+  endDate: string | null;
+  craneCount: number;
+};
+
+export function ImportWizard({ role, cycles }: { role: string; cycles: OpenCycleOption[] }) {
   const [file, setFile] = useState<File | null>(null);
+  const [cycleId, setCycleId] = useState(cycles[0]?.id ?? "");
   const fileRef = useRef<HTMLInputElement>(null);
   const [validation, validateAction, validating] = useActionState<ValidateState, FormData>(validateFleetAction, null);
-  const [, commitAction, committing] = useActionState<ActionState, FormData>(uploadFleetAction, null);
+  const [commitState, commitAction, committing] = useActionState<ActionState, FormData>(uploadFleetAction, null);
   const [pending, startTransition] = useTransition();
   const canUpload = role === "FPNA" || role === "GLOBAL_ADMIN";
+
+  useEffect(() => {
+    if (commitState?.ok) toast.success(commitState.ok);
+    if (commitState?.error) toast.error(commitState.error);
+  }, [commitState]);
 
   const formFor = () => {
     const fd = new FormData();
     if (file) fd.set("file", file);
+    fd.set("cycleId", cycleId);
     return fd;
   };
 
   return (
     <div className="space-y-4">
       <div className="card p-5">
+        <h2 className="panel-title">Step 1 — choose the cycle</h2>
+        {cycles.length === 0 ? (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-panel-2 px-3 py-3 text-[12px] text-muted">
+            <span>No open cycle yet. FP&A must create one with a start and end date before uploading a fleet.</span>
+            <a href="/cycles" className="btn btn-primary h-9">Create a cycle</a>
+          </div>
+        ) : (
+          <>
+            <label className="mt-4 block">
+              <span className="mb-1 block text-[12px] font-semibold text-ink">Upload into</span>
+              <select value={cycleId} onChange={(event) => setCycleId(event.target.value)} className="select h-9">
+                {cycles.map((cycle) => (
+                  <option key={cycle.id} value={cycle.id}>
+                    {cycle.name} · {cycle.startDate ?? "—"} → {cycle.endDate ?? "—"} · {cycle.craneCount} crane(s)
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="mt-2 text-[12px] text-muted">
+              New Equipment IDs are appended to this cycle. You can come back and upload another workbook here at any time.
+            </p>
+          </>
+        )}
+      </div>
+
+      <div className="card p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="panel-title">Step 1 — choose the workbook</h2>
+            <h2 className="panel-title">Step 2 — choose the workbook</h2>
           </div>
-          <a href="/api/template" className="btn btn-secondary h-9">
-            <FileSpreadsheet size={14} /> Download template
-          </a>
+          <div className="flex flex-wrap gap-2">
+            <a href="/templates/FIRM-Sample-Fleet.xlsx" className="btn btn-secondary h-9">
+              <FileSpreadsheet size={14} /> Download sample data
+            </a>
+            <a href="/api/template" className="btn btn-secondary h-9">
+              <FileSpreadsheet size={14} /> Blank template
+            </a>
+          </div>
         </div>
 
         {!canUpload && (
@@ -86,7 +132,7 @@ export function ImportWizard({ role }: { role: string }) {
           <button
             type="button"
             className="btn btn-secondary h-9"
-            disabled={!file || !validation?.preview || validation.preview.errorCount > 0 || !canUpload || committing}
+            disabled={!file || !cycleId || !validation?.preview || validation.preview.errorCount > 0 || !canUpload || committing}
             onClick={() => startTransition(() => {
               void commitAction(formFor());
               toast.success("Upload submitted.");
@@ -145,7 +191,7 @@ export function ImportWizard({ role }: { role: string }) {
                       <th className="px-3 py-2">Equipment ID</th><th className="px-3 py-2">Description</th>
                       <th className="px-3 py-2">YOM</th><th className="px-3 py-2">Age</th>
                       <th className="px-3 py-2">Yield %</th><th className="px-3 py-2">Utilisation %</th>
-                      <th className="px-3 py-2">Old Fleet</th><th className="px-3 py-2">SO</th>
+                      <th className="px-3 py-2">Old Fleet</th><th className="px-3 py-2">NRG / RG</th><th className="px-3 py-2">SO</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-line">
@@ -158,6 +204,7 @@ export function ImportWizard({ role }: { role: string }) {
                         <td className="px-3 py-2 tabular-nums">{row.yieldPct}</td>
                         <td className="px-3 py-2 tabular-nums">{row.utilisationPct}</td>
                         <td className="px-3 py-2">{row.oldFleet ? <span className="badge badge-old">Yes</span> : <span className="badge badge-slate">No</span>}</td>
+                        <td className="px-3 py-2">{row.nrg ? <span className="badge badge-orange">NRG</span> : <span className="badge badge-healthy">RG</span>}</td>
                         <td className="px-3 py-2 font-mono text-[12px] text-muted">{row.soNumber ?? "—"}{row.soEnd ? ` · ${row.soEnd}` : ""}</td>
                       </tr>
                     ))}

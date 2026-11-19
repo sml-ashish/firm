@@ -4,6 +4,7 @@ import * as fs from "node:fs/promises";
 import path from "node:path";
 
 import { buildFixtures } from "./fixtures";
+import { isNrg } from "./workflow";
 import type { Crane, Cycle } from "./types";
 
 export interface FirmState {
@@ -52,10 +53,31 @@ async function load(): Promise<FirmState> {
     }
     state = parsed;
   } catch {
-    // Missing or corrupt file — reseed from the deterministic fixtures.
+    // Missing or corrupt file — start from an empty workflow.
     state = buildFixtures();
     await writeFileAtomic(state);
   }
+
+  // Apply the system NRG/RG rule (utilisation < 60% and yield < 1.8%) to cranes
+  // that were uploaded before the rule existed, so existing data is consistent.
+  let nrgChanged = false;
+  for (const crane of state.cranes) {
+    const expected = isNrg(crane.yieldPct, crane.utilisationPct);
+    if (crane.flags.nrg === expected && crane.sales.nrg === expected) continue;
+    const previous = crane.flags.nrg ? "NRG" : "RG";
+    crane.flags.nrg = expected;
+    crane.sales.nrg = expected;
+    crane.audit.unshift({
+      id: `nrg-backfill-${crane.id}`,
+      actor: "System",
+      actorRole: "GLOBAL_ADMIN",
+      action: "NRG / RG classification applied",
+      detail: `${crane.equipmentId} · utilisation ${crane.utilisationPct}%, yield ${crane.yieldPct}% · ${previous} → ${expected ? "NRG" : "RG"}`,
+      at: new Date().toISOString(),
+    });
+    nrgChanged = true;
+  }
+  if (nrgChanged) await writeFileAtomic(state);
 
   cache = state;
   return state;

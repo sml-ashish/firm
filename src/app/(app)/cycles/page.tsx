@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { getCycles, getCranes } from "@/lib/firm/api";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
+import { CreateCycleForm } from "@/components/create-cycle-form";
 import { dateLabel } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +20,12 @@ export default async function CyclesPage() {
       <PageHeader
         eyebrow="FIRM cycle"
         title="Cycles"
-        actions={canUpload ? <Link href="/import" className="btn btn-primary">Upload a new fleet</Link> : undefined}
+        actions={canUpload ? (
+          <>
+            <CreateCycleForm />
+            <Link href="/import" className="btn btn-secondary">Upload fleet</Link>
+          </>
+        ) : undefined}
       />
       {cycles.length === 0 ? (
         <EmptyState icon={<CalendarRange size={19} />} title="No cycles yet" />

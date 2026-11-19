@@ -310,6 +310,16 @@ export const SAP_FIELDS = [
   "Asset transfer document number (international deployment)",
 ] as const;
 
+/**
+ * System NRG/RG classification applied at upload: a crane is NRG only when
+ * BOTH utilisation and monthly yield stay below the thresholds; otherwise RG.
+ */
+export const NRG_UTILISATION_MAX = 60;
+export const NRG_YIELD_MAX = 1.8;
+export function isNrg(yieldPct: number, utilisationPct: number): boolean {
+  return utilisationPct < NRG_UTILISATION_MAX && yieldPct < NRG_YIELD_MAX;
+}
+
 /** Section 1 — no new SO, deployment or handover before the current SO ends. */
 export function executionAllowedFrom(soEndDate: string | null): string | null {
   return soEndDate || null;

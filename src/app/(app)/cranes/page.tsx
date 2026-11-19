@@ -5,6 +5,9 @@ import { PageHeader } from "@/components/page-header";
 import { StatusChip, FlagChip } from "@/components/status-chip";
 import { EmptyState } from "@/components/empty-state";
 import { CraneReviewButton } from "@/components/crane-review-button";
+import {
+  SalesBulkReviewProvider, CraneSelectAll, CraneSelectCheckbox,
+} from "@/components/sales-bulk-review";
 import { FinanceDedupeButton } from "@/components/finance-dedupe-button";
 import { FinanceBulkDedupeButton } from "@/components/finance-bulk-dedupe-button";
 import { MarketingCatalogueButton } from "@/components/marketing-catalogue-button";
@@ -58,6 +61,9 @@ export default async function CranesPage({ searchParams }: { searchParams: Searc
   const financePending = isFinance
     ? (await getCranes()).rows.filter((crane) => crane.status === "S02").length
     : 0;
+  const reviewableIds = isSales
+    ? result.rows.filter((crane) => crane.status === "S01").map((crane) => crane.id)
+    : [];
 
   return (
     <>
@@ -125,11 +131,13 @@ export default async function CranesPage({ searchParams }: { searchParams: Searc
           actions={<Link href="/cranes" className="btn btn-secondary">Clear filters</Link>}
         />
       ) : (
+        <SalesBulkReviewProvider enabled={isSales}>
         <div className="card overflow-hidden">
           <div className="overflow-x-auto scroll-thin">
             <table id="crane-table" className={`w-full text-left ${isFinance ? "min-w-[1320px]" : isReviewer || isMarketing || isStrategy || isBu || isCso || isScm || isFpna || isCbo ? "min-w-[1180px]" : "min-w-[980px]"}`}>
               <thead>
                 <tr className="border-b border-line bg-panel-2 text-[12px] font-bold uppercase tracking-[0.08em] text-faint">
+                  {isSales && <th className="px-3 py-2.5"><CraneSelectAll ids={reviewableIds} /></th>}
                   <th className="px-3 py-2.5">Equipment</th>
                   <th className="px-3 py-2.5">YOM / Age</th>
                   <th className="px-3 py-2.5">Yield %</th>
@@ -155,6 +163,11 @@ export default async function CranesPage({ searchParams }: { searchParams: Searc
                   const derivedNrg = crane.utilisationPct < 60 && crane.yieldPct < 1.8;
                   return (
                     <tr key={crane.id} className="text-[12px] transition hover:bg-panel-2">
+                      {isSales && (
+                        <td className="px-3 py-2.5">
+                          <CraneSelectCheckbox craneId={crane.id} disabled={crane.status !== "S01"} />
+                        </td>
+                      )}
                       <td className="px-3 py-2.5">
                         <Link href={`/cranes/${crane.id}`} className="font-semibold text-brand hover:underline">
                           {crane.equipmentId}
@@ -168,7 +181,7 @@ export default async function CranesPage({ searchParams }: { searchParams: Searc
                       <td className="px-3 py-2.5">
                         <div className="flex flex-wrap gap-1">
                           {crane.flags.oldFleet && <FlagChip label="Old Fleet" tone="violet" />}
-                          <FlagChip label={derivedNrg ? "NRG" : "Non-NRG"} tone={derivedNrg ? "orange" : "slate"} />
+                          <FlagChip label={derivedNrg ? "NRG" : "RG"} tone={derivedNrg ? "orange" : "slate"} />
                           {crane.flags.nonDeployable && <FlagChip label="Non-Deployable" tone="red" />}
                         </div>
                       </td>
@@ -387,6 +400,7 @@ export default async function CranesPage({ searchParams }: { searchParams: Searc
             </table>
           </div>
         </div>
+        </SalesBulkReviewProvider>
       )}
     </>
   );
