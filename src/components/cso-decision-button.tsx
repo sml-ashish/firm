@@ -1,30 +1,28 @@
 "use client";
 
+import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { ActionForm } from "@/components/approval-actions";
+import { JointConflictPanel } from "@/components/joint-conflict-panel";
+import type { Award, BuQuote, ClaimBack, Conflict } from "@/lib/firm/types";
+import { buLabel } from "@/lib/firm/bu";
 import { conflictOptions } from "@/lib/firm/workflow";
-
-type AwardView = {
-  bu: string;
-  reason: string;
-  decidedBy: string;
-  csoRequired?: boolean;
-  strategyHeadApprovedBy?: string | null;
-  csoApprovedBy?: string | null;
-  approvedBy: string | null;
-};
 
 type CsoCrane = {
   id: string;
   equipmentId: string;
   status: string;
   yieldPct: number;
-  award: AwardView | null;
-  buQuotes: { bu: string; expectedYieldPct: number | null }[];
-  claimBack: { customer: string; reason: string; team?: string } | null;
-  conflict: { ruleId: string; title: string; reason: string | null } | null;
+  award: Award | null;
+  buQuotes: BuQuote[];
+  claimBack: ClaimBack | null;
+  conflict: Conflict | null;
+  saleQuotes: { buyer: string; value: number; date: string }[];
+  selectedSaleQuoteIndex?: number | null;
 };
+
+const inr = (value: number) => `₹${value.toLocaleString("en-IN")}`;
 
 /** CSO's award / exception decisions, opened from the crane register. */
 export function CsoDecisionButton({ crane, role }: { crane: CsoCrane; role: string }) {
@@ -32,13 +30,14 @@ export function CsoDecisionButton({ crane, role }: { crane: CsoCrane; role: stri
   const quote = awarded ? crane.buQuotes.find((entry) => entry.bu === awarded.bu) : null;
   const lowYield = awarded?.csoRequired ??
     (!!quote?.expectedYieldPct && crane.yieldPct > 0 && quote.expectedYieldPct < crane.yieldPct);
-  const headDone = !!awarded?.strategyHeadApprovedBy;
+  const headDone = !!awarded?.strategyHeadApprovedBy || !!awarded?.decidedBy;
   const csoDone = !lowYield || !!awarded?.csoApprovedBy;
 
   const trigger = crane.status === "S06" ? "Review award" : "Review exception";
+  const [open, setOpen] = useState(false);
 
   return (
-    <Dialog.Root>
+    <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger asChild>
         <button type="button" className="btn btn-secondary h-8 px-2.5 text-[12px]">
           {trigger}
@@ -54,10 +53,12 @@ export function CsoDecisionButton({ crane, role }: { crane: CsoCrane; role: stri
               </Dialog.Title>
               <Dialog.Description className="mt-1 text-[12px] text-muted">
                 {crane.status === "S06"
-                  ? "S06 · BU award approval (yield below expected rate)"
+                  ? "S06 · BU award sent by Strategy for CSO approval"
                   : crane.status === "S13"
                     ? "S13 · Claim-back approval"
-                    : "S14 · Conflict decision"}
+                    : crane.conflict?.ruleId === "DOMESTIC_VS_BU"
+                      ? "S14 · Joint CBO + CSO decision (CEO tie-break if they disagree)"
+                      : "S14 · Conflict decision"}
               </Dialog.Description>
             </div>
             <Dialog.Close asChild>
@@ -70,19 +71,19 @@ export function CsoDecisionButton({ crane, role }: { crane: CsoCrane; role: stri
           {crane.status === "S06" && awarded && (
             <>
               <div className="mt-4 space-y-1 rounded-lg border border-line bg-panel-2 p-3 text-[12px]">
-                <div><span className="text-faint">Awarded to:</span> <strong className="text-ink">{awarded.bu}</strong></div>
+                <div><span className="text-faint">Awarded to:</span> <strong className="text-ink">{buLabel(awarded.bu)}</strong></div>
                 <div><span className="text-faint">Reason:</span> {awarded.reason}</div>
                 <div><span className="text-faint">Decided by:</span> {awarded.decidedBy}</div>
                 <div>
                   <span className="text-faint">Yield check:</span>{" "}
                   {quote?.expectedYieldPct ?? "—"}% quoted vs {crane.yieldPct}% expected
-                  {lowYield && <span className="ml-1 font-semibold text-nrg-ink">· CSO sign-off required</span>}
+                  {lowYield && <span className="ml-1 font-semibold text-nrg-ink">· CSO review requested</span>}
                 </div>
               </div>
 
               <div className="mt-3 flex flex-wrap gap-2 text-[12px]">
                 <span className={`badge ${headDone ? "badge-green" : "badge-amber"}`}>
-                  Strategy Head {headDone ? `approved · ${awarded.strategyHeadApprovedBy}` : "pending"}
+                  Strategy decision {headDone ? `recorded · ${awarded.strategyHeadApprovedBy}` : "pending"}
                 </span>
                 <span className={`badge ${csoDone ? "badge-green" : "badge-amber"}`}>
                   CSO {csoDone ? (awarded.csoApprovedBy ? `approved · ${awarded.csoApprovedBy}` : "not required") : "pending"}
@@ -91,7 +92,7 @@ export function CsoDecisionButton({ crane, role }: { crane: CsoCrane; role: stri
 
               <div className="mt-4 space-y-3 border-t border-line pt-4">
                 <p className="text-[12px] leading-relaxed text-muted">
-                  Approve to record the CSO sign-off. The crane is reserved (S07) once both required approvals are in place. Reject sends the award back to bid evaluation (S05).
+                  Strategy sent this award for CSO approval. Approve to reserve the crane (S07); reject to clear the award and return it to bid evaluation (S05).
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <ActionForm
@@ -101,7 +102,8 @@ export function CsoDecisionButton({ crane, role }: { crane: CsoCrane; role: stri
                     role={role}
                     requireComment
                     confirmTitle="Approve this award?"
-                    confirmBody="Your CSO sign-off is recorded. The crane moves to S07 once the Strategy Head has also approved."
+                    confirmBody="Your CSO approval reserves the crane for the awarded BU (S07)."
+                    onSuccess={() => setOpen(false)}
                   />
                   <ActionForm
                     craneId={crane.id}
@@ -112,6 +114,7 @@ export function CsoDecisionButton({ crane, role }: { crane: CsoCrane; role: stri
                     requireComment
                     confirmTitle="Reject this award?"
                     confirmBody="The award is cleared and the crane returns to bid evaluation (S05)."
+                    onSuccess={() => setOpen(false)}
                   />
                 </div>
               </div>
@@ -138,21 +141,51 @@ export function CsoDecisionButton({ crane, role }: { crane: CsoCrane; role: stri
                 <div><span className="text-faint">Conflict:</span> {crane.conflict?.title ?? "—"}</div>
                 <div className="mt-1"><span className="text-faint">Details:</span> {crane.conflict?.reason ?? "—"}</div>
               </div>
-              <ActionForm
-                craneId={crane.id}
-                kind="RESOLVE_CONFLICT"
-                label="Resolve conflict"
-                role={role}
-                requireComment
-                confirmTitle="Resolve this conflict?"
-                extra={
-                  <select name="decision" className="select h-9" aria-label="Winning option">
-                    {conflictOptions(crane.conflict?.ruleId).map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
-                }
-              />
+              {crane.conflict?.ruleId === "SALE_VS_INTERNATIONAL" && (
+                <div className="rounded-lg border border-[color-mix(in_srgb,var(--brand)_30%,transparent)] bg-brand-soft p-3 text-[12px] text-brand-ink">
+                  <div className="font-semibold">CSO exception · sale quotation vs international rental</div>
+                  <div className="mt-1.5">
+                    Sale offer:{" "}
+                    <strong className="font-semibold">
+                      {(() => {
+                        const quote = crane.saleQuotes[crane.selectedSaleQuoteIndex ?? -1];
+                        return quote ? `${quote.buyer} · ${inr(quote.value)} · ${quote.date}` : "held sale quotation";
+                      })()}
+                    </strong>
+                    {" vs "}international rental by{" "}
+                    <strong className="font-semibold">{crane.claimBack?.customer ?? "—"}</strong>
+                  </div>
+                  <div className="mt-1.5">
+                    International rental wins → S07. Sale approval stops, SCM tells the buyer, and Strategy reserves the crane for the BU and deploys via SAP asset transfer (S16). Not reserved in 15 days → S09.
+                  </div>
+                  <div className="mt-1">Sale wins → claim-back rejected, sale approval resumes at S10.</div>
+                </div>
+              )}
+              {crane.conflict?.ruleId === "DOMESTIC_VS_BU" ? (
+                <JointConflictPanel
+                  crane={{
+                    id: crane.id, claimBack: crane.claimBack,
+                    conflict: crane.conflict!, buQuotes: crane.buQuotes, award: crane.award,
+                  }}
+                  role={role}
+                />
+              ) : (
+                <ActionForm
+                  craneId={crane.id}
+                  kind="RESOLVE_CONFLICT"
+                  label="Resolve conflict"
+                  role={role}
+                  requireComment
+                  confirmTitle="Resolve this conflict?"
+                  extra={
+                    <select name="decision" className="select h-9" aria-label="Winning option">
+                      {conflictOptions(crane.conflict?.ruleId).map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  }
+                />
+              )}
             </div>
           )}
         </Dialog.Content>

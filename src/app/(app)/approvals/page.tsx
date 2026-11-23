@@ -16,7 +16,7 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 const TASKS: Record<string, { title: string; note: string }> = {
   S01: { title: "Submit parallel check", note: "Sales and Maintenance review the full fleet side by side." },
   S02: { title: "Finalise FIRM list", note: "Finance deduplicates and routes the crane." },
-  S06: { title: "Approve BU award", note: "Strategy Head; CSO if the rental yield is below expected." },
+  S06: { title: "Decide BU award", note: "CSO decision on the award sent by Strategy." },
   S07: { title: "Record international transfer", note: "Deployment waits for the current SO to end." },
   S10: { title: "Approve sale", note: "FP&A has validated the price." },
   S11: { title: "Approve scrap sale", note: "No acceptable buyer in the sale window." },

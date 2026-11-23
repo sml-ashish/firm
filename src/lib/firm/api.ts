@@ -39,18 +39,37 @@ export async function getCurrentCycle(): Promise<Cycle | null> {
 const SALE_STATUSES = ["S08", "S09", "S10", "S11", "S12", "S18", "S19", "S20"];
 /** Cranes that have reached SCM after the Marketing catalogue window closed. */
 const SCM_STATUSES = ["S09", "S10", "S11", "S12", "S18", "S19", "S20"];
-/** Strategy's international-rental bin, after dedupe and before sale takes over. */
-const STRATEGY_STATUSES = ["S04", "S05", "S06", "S07", "S16"];
+/**
+ * Strategy's international-rental bin. It keeps visibility of its Old Fleet/NRG
+ * cranes after they enter the catalogue/sale route (S08 → S09 → S10) so Strategy
+ * can raise the international claim-back, and while the CSO decides the
+ * resulting conflict (S14). Non-Strategy categories are still filtered out below.
+ */
+const STRATEGY_STATUSES = [
+  "S04", "S05", "S06", "S07",
+  "S08", "S09", "S10",
+  "S13", "S14", "S16",
+];
 const INTERNATIONAL_CATEGORIES = ["OLD_FLEET", "NRG"];
 
-export function roleAllowsCrane(role: string | undefined, crane: Crane): boolean {
+export function roleAllowsCrane(
+  role: string | undefined,
+  crane: Crane,
+  buCode?: string | null,
+): boolean {
   if (!role) return true;
   if (role === "STRATEGY") {
     return INTERNATIONAL_CATEGORIES.includes(crane.finalCategory ?? "") &&
       STRATEGY_STATUSES.includes(crane.status);
   }
   if (role === "BU") {
-    return ["S04", "S05"].includes(crane.status);
+    if (!["S04", "S05"].includes(crane.status)) return false;
+    const invited = crane.invitedBus ?? [];
+    // Legacy cranes with no selection stay open to every BU. A BU login only
+    // sees cranes floated to it; the generic BU account has no code and keeps
+    // the all-BUs view used by administration.
+    if (invited.length === 0 || !buCode) return true;
+    return invited.includes(buCode);
   }
   if (role === "MARKETING") {
     // Marketing only handles cranes inside the catalogue/sale window, never fleet still at L1.
@@ -59,7 +78,13 @@ export function roleAllowsCrane(role: string | undefined, crane: Crane): boolean
         INTERNATIONAL_CATEGORIES.includes(crane.finalCategory ?? ""));
   }
   if (role === "SCM") {
-    // SCM only works on cranes in its sale/scrap bin, after Marketing closes the catalogue.
+    // SCM also follows a sale that lost a rental conflict — domestic at S15 or
+    // international at S07 — so it can tell the buyer and revive the held
+    // quotation if the winning rental misses its 15-day deadline.
+    if (crane.status === "S15") return crane.saleQuotes.length > 0;
+    if (crane.status === "S07") {
+      return crane.conflict?.ruleId === "SALE_VS_INTERNATIONAL" && crane.saleQuotes.length > 0;
+    }
     return SCM_STATUSES.includes(crane.status);
   }
   if (role === "CSO") {
@@ -75,11 +100,7 @@ export function roleAllowsCrane(role: string | undefined, crane: Crane): boolean
     return false;
   }
   if (role === "CBO") {
-    // A sale reaches CBO only after FP&A has validated the chosen quotation.
-    if (crane.status === "S10") {
-      const quote = crane.saleQuotes[crane.selectedSaleQuoteIndex ?? -1];
-      return !!quote?.fpnaValidated;
-    }
+    // CBO decides claim-backs and domestic conflicts; sale approval belongs to MD.
     if (crane.status === "S13") return claimApprovers(crane.claimBack?.team).includes("CBO");
     if (crane.status === "S14") return conflictApprovers(crane.conflict?.ruleId).includes("CBO");
     return false;
@@ -91,7 +112,7 @@ export async function getCranes(filters: CraneFilters = {}): Promise<CraneListRe
   const state = await getState();
   const q = filters.q?.trim().toLowerCase();
   const rows = state.cranes.filter((crane) => {
-    if (!roleAllowsCrane(filters.role, crane)) return false;
+    if (!roleAllowsCrane(filters.role, crane, filters.buCode)) return false;
     if (q && !`${crane.equipmentId} ${crane.description} ${crane.finalCategory ?? ""}`
       .toLowerCase().includes(q)) return false;
     if (filters.status && filters.status !== "ALL" && crane.status !== filters.status) return false;
@@ -172,9 +193,9 @@ export async function getApprovalQueue(role: string): Promise<ApprovalItem[]> {
   const roleMap: Partial<Record<string, { roles: string[]; decision: string; note: string }>> = {
     S01: { roles: ["SALES", "MAINTENANCE", admin], decision: "Submit parallel check", note: "Sales and Maintenance review the full fleet side by side" },
     S02: { roles: ["FINANCE", admin], decision: "Finalise FIRM list after deduplication", note: "Finance Head sign-off required" },
-    S06: { roles: ["STRATEGY", "CSO", admin], decision: "Award crane to international BU", note: "Strategy Head; CSO if yield is below expected" },
+    S06: { roles: ["CSO", admin], decision: "Decide Strategy's BU award request", note: "Only the CSO decides; Strategy's award decision is already recorded" },
     S07: { roles: ["STRATEGY", admin], decision: "Record international transfer", note: "Deployment waits for the current SO to end" },
-    S10: { roles: ["CBO", "MD", admin], decision: "Approve sale", note: "FP&A has validated the price" },
+    S10: { roles: ["MD", admin], decision: "Approve sale", note: "FP&A has validated the price" },
     S11: { roles: ["MD", admin], decision: "Approve scrap sale", note: "No acceptable buyer in the sale window" },
     S13: { roles: ["CBO", "CSO", "SALES", "STRATEGY", admin], decision: "Approve claim-back", note: "Real opportunity details required" },
     S14: { roles: ["CBO", "CSO", "STRATEGY", "MD", admin], decision: "Resolve conflict", note: "Decision due within 3 working days" },
@@ -182,7 +203,16 @@ export async function getApprovalQueue(role: string): Promise<ApprovalItem[]> {
   return state.cranes
     .map((crane) => {
       const rule = roleMap[crane.status];
-      if (!rule || !rule.roles.includes(role)) return null;
+      if (!rule) return null;
+      const approvers = crane.status === "S14"
+        ? conflictApprovers(crane.conflict?.ruleId)
+        : rule.roles;
+      if (!approvers.includes(role)) return null;
+      // The MD only steps in as the CEO tie-break after CBO and CSO disagree.
+      if (crane.status === "S14" && role === "MD" &&
+          crane.conflict?.ruleId === "DOMESTIC_VS_BU" && !crane.conflict.escalatedToMd) {
+        return null;
+      }
       if (!roleAllowsCrane(role, crane)) return null;
       if (crane.status === "S10") {
         const quote = crane.saleQuotes[crane.selectedSaleQuoteIndex ?? -1];

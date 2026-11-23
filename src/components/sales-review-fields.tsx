@@ -35,7 +35,7 @@ export function SalesReviewFields({
         <option>Not marketable</option>
       </select>
 
-      {nrg !== undefined && (
+      {nrg != null && (
         <span className={`badge ${nrg ? "badge-orange" : "badge-healthy"}`}>
           NRG / RG · {nrg ? "NRG" : "RG"} (set at upload)
         </span>
@@ -45,7 +45,9 @@ export function SalesReviewFields({
         <input
           name="expectedMonths"
           type="number"
-          min="0"
+          min="1"
+          step="1"
+          required
           value={months}
           onChange={(event) => setMonths(event.target.value)}
           placeholder="Duration (months)"

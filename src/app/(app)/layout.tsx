@@ -6,6 +6,7 @@ import {
 import { Sidebar } from "@/components/sidebar";
 import { TopBar } from "@/components/top-bar";
 import { DashboardOverlays } from "@/components/dashboard/dashboard-overlays";
+import { buCodeForUser } from "@/lib/firm/bu";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     getCurrentCycle(),
     getCycles(),
     getApprovalQueue(user.role),
-    getCranes({ role: user.role }),
+    getCranes({ role: user.role, buCode: buCodeForUser(user) }),
     getUsers(),
   ]);
 

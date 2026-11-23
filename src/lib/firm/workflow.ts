@@ -44,7 +44,7 @@ export const STATUSES: StatusMeta[] = [
   { code: "S03", name: "Not Flagged – Excluded", layer: "L2", type: "Closed", impact: "Exclude", tone: "slate", hint: "No flag after dedup — the crane stays in the active fleet." },
   { code: "S04", name: "Offered to International BUs", layer: "L3", type: "Active", impact: "Carry forward", tone: "brand", hint: "Strategy has floated the crane to every international BU." },
   { code: "S05", name: "BU Bid Evaluation", layer: "L4", type: "Active", impact: "Carry forward", tone: "brand", hint: "BUs have responded; quotes can still be revised until the window closes." },
-  { code: "S06", name: "BU Award Approval Pending", layer: "L4", type: "Approval", impact: "Carry forward", tone: "amber", hint: "Awaiting Strategy Head, and CSO when yield is below expected." },
+  { code: "S06", name: "BU Award Approval Pending", layer: "L4", type: "Approval", impact: "Carry forward", tone: "amber", hint: "Awaiting CSO decision on Strategy's award request." },
   { code: "S07", name: "Reserved – Pending Deployment", layer: "L4", type: "Active", impact: "Carry forward", tone: "violet", hint: "Awarded to a BU. No SO yet — still claimable before transfer." },
   { code: "S08", name: "Catalogue Preparation", layer: "L5", type: "Active", impact: "Carry forward", tone: "violet", hint: "Marketing catalogue window, proposed 5 working days." },
   { code: "S09", name: "Listed for Sale", layer: "L6", type: "Active", impact: "Carry forward", tone: "brand", hint: "SCM is gathering domestic and international quotations." },
@@ -86,7 +86,7 @@ export const ROLES: RoleMeta[] = [
   { role: "BU", name: "International BU", short: "Intl. BU", description: "Decides whether to take a crane on rental and submits an indicative quote.", tone: "green" },
   { role: "MARKETING", name: "Marketing Team", short: "Marketing", description: "Uploads the crane catalogue within the window before SCM.", tone: "slate" },
   { role: "SCM", name: "SCM Team", short: "SCM", description: "Runs domestic and international sale and scrap sale, and brings quotations for approval.", tone: "amber" },
-  { role: "CBO", name: "CBO", short: "CBO", description: "Final call when a sale quotation competes with domestic rental; approves sale per DOA.", tone: "red" },
+  { role: "CBO", name: "CBO", short: "CBO", description: "Final call when a sale quotation competes with domestic rental; decides claim-backs and conflicts.", tone: "red" },
   { role: "CSO", name: "CSO", short: "CSO", description: "Final call and exception approval when international rental competes with a sale quotation.", tone: "red" },
   { role: "MD", name: "MD", short: "MD", description: "Approves sale, scrap sale and exceptions per Section 7.", tone: "green" },
   { role: "GLOBAL_ADMIN", name: "Global Administrator", short: "Admin", description: "Sees every crane in the cycle, sends reminders and escalates; takes no business calls.", tone: "slate" },
@@ -164,9 +164,9 @@ export function claimConflictRule(input: {
 /** Section 7 — who approves each decision. */
 export const APPROVAL_MATRIX: { decision: string; preparedBy: string; approvedBy: string; note?: string }[] = [
   { decision: "Final FIRM list after deduplication", preparedBy: "Finance", approvedBy: "Finance Head" },
-  { decision: "Award crane to a BU for international rental", preparedBy: "Strategy", approvedBy: "Strategy Head; CSO if rental is below expected rate" },
+  { decision: "Award crane to a BU for international rental", preparedBy: "Strategy", approvedBy: "CSO when Strategy sends the award for approval" },
   { decision: "Move crane from Strategy to sale (no BU interest)", preparedBy: "Strategy", approvedBy: "Automatic at end of BU window" },
-  { decision: "Sale", preparedBy: "SCM; FP&A validates price", approvedBy: "CBO" },
+  { decision: "Sale", preparedBy: "SCM; FP&A validates price", approvedBy: "MD" },
   { decision: "Scrap sale", preparedBy: "SCM; FP&A validates scrap price", approvedBy: "MD" },
   { decision: "Claim-back by layer", preparedBy: "Sales or Strategy", approvedBy: "As per claim-back rules" },
   { decision: "Exception: international rental over a sale quotation", preparedBy: "Strategy", approvedBy: "CSO" },
@@ -331,4 +331,27 @@ export function canExecute(
 ): boolean {
   if (!soEndDate) return true;
   return soEndDate <= today;
+}
+
+/** Section 6.1 — a rental win has 15 days to produce an SO before S09 reopens. */
+export const RENTAL_SO_WINDOW_DAYS = 15;
+/** A held sale quotation can only be revived inside its 15-day validity window. */
+export const SALE_QUOTE_VALID_DAYS = 15;
+
+/** Add calendar days to a yyyy-mm-dd date without pulling in a date library. */
+export function addDays(date: string, days: number): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
+  const value = new Date(`${date}T00:00:00Z`);
+  if (Number.isNaN(value.getTime())) return date;
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+/** True while a dated sale quotation is still inside its validity window. */
+export function saleQuoteStillValid(
+  quoteDate: string | undefined | null,
+  today = new Date().toISOString().slice(0, 10),
+): boolean {
+  if (!quoteDate || !/^\d{4}-\d{2}-\d{2}$/.test(quoteDate)) return false;
+  return quoteDate <= today && today <= addDays(quoteDate, SALE_QUOTE_VALID_DAYS);
 }

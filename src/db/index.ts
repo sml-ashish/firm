@@ -59,13 +59,17 @@ const SEED_USERS = [
   { name: "Maintenance Team", email: "maintenance@firm.local", password: "Firm@12345", role: "MAINTENANCE", designation: "Maintenance Team" },
   { name: "Finance Team", email: "finance@firm.local", password: "Firm@12345", role: "FINANCE", designation: "Finance" },
   { name: "Strategy Team", email: "strategy@firm.local", password: "Firm@12345", role: "STRATEGY", designation: "Strategy Team (International)" },
-  { name: "International BU", email: "bu@firm.local", password: "Firm@12345", role: "BU", designation: "International BU" },
+  { name: "SFRPL", email: "bu1@firm.local", password: "Firm@12345", role: "BU", designation: "BU1" },
   { name: "Marketing Team", email: "marketing@firm.local", password: "Firm@12345", role: "MARKETING", designation: "Marketing Team" },
   { name: "SCM Team", email: "scm@firm.local", password: "Firm@12345", role: "SCM", designation: "SCM Team" },
   { name: "CBO", email: "cbo@firm.local", password: "Firm@12345", role: "CBO", designation: "Chief Business Officer" },
   { name: "CSO", email: "cso@firm.local", password: "Firm@12345", role: "CSO", designation: "Chief Strategy Officer" },
   { name: "MD", email: "md@firm.local", password: "Firm@12345", role: "MD", designation: "Managing Director" },
   { name: "Global Administrator", email: "admin@firm.local", password: "Firm@12345", role: "GLOBAL_ADMIN", designation: "Global Administrator" },
+  // Two more international BU logins. Each BU login is tied to its own BU, so
+  // it never picks a BU when quoting — Strategy decides who is invited.
+  { name: "Botswana", email: "bu2@firm.local", password: "Firm@12345", role: "BU", designation: "BU2" },
+  { name: "SMME", email: "bu3@firm.local", password: "Firm@12345", role: "BU", designation: "BU3" },
 ];
 
 

@@ -4,12 +4,13 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { ActionForm } from "@/components/approval-actions";
 import { FlagChip } from "@/components/status-chip";
-import type { Flags } from "@/lib/firm/workflow";
+import { CATEGORY_LABEL, type FinalCategory, type Flags } from "@/lib/firm/workflow";
 
 type FinanceCrane = {
   id: string;
   equipmentId: string;
   flags: Flags;
+  finalOverride?: { category: FinalCategory; reason: string } | null;
 };
 
 function routeFor(flags: Flags) {
@@ -73,15 +74,49 @@ export function FinanceDedupeButton({
             <div className="mt-3 text-[12px] text-muted">
               Proposed: <span className="font-semibold text-ink">{preview.category}</span> · {preview.status} · {preview.route}
             </div>
+            {crane.finalOverride && (
+              <div className="mt-2 text-[12px] font-medium text-nrg-ink">
+                Finance override on record: {CATEGORY_LABEL[crane.finalOverride.category]} — {crane.finalOverride.reason}
+              </div>
+            )}
           </div>
 
-          <div className="mt-4 border-t border-line pt-4">
+          <div className="mt-4 space-y-3 border-t border-line pt-4">
+            <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-faint">
+              Finance override (optional)
+            </div>
+            <p className="text-[12px] text-muted">
+              Leave as proposed to apply the flag rule. An override needs a written reason; original flags stay visible.
+            </p>
             <ActionForm
               craneId={crane.id}
               kind="FINALISE_LIST"
               label="Deduplicate crane"
               role={role}
               requireComment
+              extra={
+                <div className="grid w-full gap-2">
+                  <select
+                    name="finalOverrideCategory"
+                    className="select h-9"
+                    defaultValue={crane.finalOverride?.category ?? ""}
+                    aria-label="Final category override"
+                  >
+                    <option value="">Use proposed category</option>
+                    {(Object.keys(CATEGORY_LABEL) as FinalCategory[]).map((category) => (
+                      <option key={category} value={category}>{CATEGORY_LABEL[category]}</option>
+                    ))}
+                  </select>
+                  <textarea
+                    name="overrideReason"
+                    rows={2}
+                    defaultValue={crane.finalOverride?.reason ?? ""}
+                    placeholder="Written reason, mandatory if an override is selected"
+                    className="input min-h-[60px] w-full py-2"
+                    aria-label="Override reason"
+                  />
+                </div>
+              }
             />
           </div>
         </Dialog.Content>

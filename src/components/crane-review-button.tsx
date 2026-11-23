@@ -3,6 +3,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { ActionForm } from "@/components/approval-actions";
+import { MaintenanceReviewFields } from "@/components/maintenance-review-fields";
 import { SalesReviewFields } from "@/components/sales-review-fields";
 
 type ReviewCrane = {
@@ -15,6 +16,7 @@ type ReviewCrane = {
   expectedMonths?: number | null;
   maintenanceSubmitted: boolean;
   deployable?: boolean | null;
+  reason?: string | null;
 };
 
 /** Row-level Review control for Sales / Maintenance on the crane register. */
@@ -46,7 +48,9 @@ export function CraneReviewButton({
                 Review {crane.equipmentId}
               </Dialog.Title>
               <Dialog.Description className="mt-1 text-[12px] text-muted">
-                {isSales ? "Sales check · marketability and NRG flag" : "Maintenance check · deployability flag"}
+                {isSales
+                  ? "Sales check · marketability and NRG flag. Only non-marketable cranes move to Finance dedup."
+                  : "Maintenance check · deployability flag"}
                 {submitted ? " · already submitted (you can update it)" : ""}
               </Dialog.Description>
             </div>
@@ -79,15 +83,10 @@ export function CraneReviewButton({
                 label={submitted ? "Update maintenance check" : "Submit maintenance check"}
                 role={role}
                 extra={
-                  <select
-                    name="deployable"
-                    defaultValue={crane.deployable === false ? "false" : "true"}
-                    className="select h-9 w-full"
-                    aria-label="Deployability"
-                  >
-                    <option value="true">Deployable</option>
-                    <option value="false">Non-Deployable</option>
-                  </select>
+                  <MaintenanceReviewFields
+                    deployable={crane.deployable}
+                    reason={crane.reason}
+                  />
                 }
               />
             )}

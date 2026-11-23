@@ -12,7 +12,9 @@ const DEMO_ACCOUNTS: { role: Role; email: string; label: string }[] = [
   { role: "MAINTENANCE", email: "maintenance@firm.local", label: "Maintenance" },
   { role: "FINANCE", email: "finance@firm.local", label: "Finance" },
   { role: "STRATEGY", email: "strategy@firm.local", label: "Strategy" },
-  { role: "BU", email: "bu@firm.local", label: "International BU" },
+  { role: "BU", email: "bu1@firm.local", label: "SFRPL (BU1)" },
+  { role: "BU", email: "bu2@firm.local", label: "Botswana (BU2)" },
+  { role: "BU", email: "bu3@firm.local", label: "SMME (BU3)" },
   { role: "MARKETING", email: "marketing@firm.local", label: "Marketing" },
   { role: "SCM", email: "scm@firm.local", label: "SCM" },
   { role: "CBO", email: "cbo@firm.local", label: "CBO" },
@@ -113,7 +115,7 @@ export function LoginForm() {
           <span>
             <span className="block text-[12px] font-semibold text-ink">Demo accounts</span>
             <span className="block text-[12px] text-faint">
-              One per role · click an account to fill the form · password Firm@12345
+              One per role, with three BU logins · click to fill · password Firm@12345
             </span>
           </span>
           <ChevronDown size={15} className={`shrink-0 text-faint transition-transform ${demoOpen ? "rotate-180" : ""}`} />
@@ -132,7 +134,7 @@ export function LoginForm() {
                       className="flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left transition hover:bg-panel-2"
                     >
                       <span className="min-w-0">
-                        <span className="block truncate text-[12px] font-medium text-ink">{meta.name}</span>
+                        <span className="block truncate text-[12px] font-medium text-ink">{account.label}</span>
                         <span className="block truncate text-[12px] text-faint">{account.email}</span>
                       </span>
                       <span className={`badge ${TONE[meta.tone] ?? "badge-slate"}`}>{meta.short}</span>

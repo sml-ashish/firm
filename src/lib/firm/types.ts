@@ -34,6 +34,9 @@ export interface BuQuote {
   customer: string | null;
   country: string | null;
   revisedAt: string;
+  /** Set when a domestic claim wins a DOMESTIC_VS_BU conflict and all BU quotes close. */
+  closedAt?: string | null;
+  closedReason?: string | null;
 }
 
 export interface Award {
@@ -41,7 +44,7 @@ export interface Award {
   reason: string;
   decidedBy: string;
   decidedAt: string;
-  /** True when the awarded yield is below the crane's expected rate; CSO must also sign off. */
+  /** True only when Strategy explicitly sent the award to the CSO for review. */
   csoRequired?: boolean;
   strategyHeadApprovedBy?: string | null;
   strategyHeadApprovedAt?: string | null;
@@ -59,6 +62,9 @@ export interface SaleQuote {
   fpnaValidated: boolean;
   validatedBy: string | null;
   validatedAt?: string | null;
+  /** Set when SCM picks another quotation; cleared if management rejects the sale and reopens the window. */
+  rejectedBy?: string | null;
+  rejectedAt?: string | null;
 }
 
 export interface ScrapQuote {
@@ -68,6 +74,9 @@ export interface ScrapQuote {
   fpnaValidated: boolean;
   validatedBy: string | null;
   validatedAt?: string | null;
+  /** Set when SCM picks another quotation; the losing quotes are hidden from the dialogs. */
+  rejectedBy?: string | null;
+  rejectedAt?: string | null;
 }
 
 export interface ClaimBack {
@@ -79,7 +88,11 @@ export interface ClaimBack {
   reason: string;
   /** Layer the crane was pulled from; a rejected claim returns here. */
   originStatus?: StatusCode | null;
-  status: "PENDING" | "APPROVED" | "REJECTED";
+  /** 15-day deadline for the domestic rental SO; the crane returns to S09 if missed. */
+  rentalSoDueAt?: string | null;
+  /** 15-day deadline for Strategy to reserve/deploy an international rental win. */
+  reservationDueAt?: string | null;
+  status: "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED";
   createdBy: string;
   createdAt: string;
   decidedBy: string | null;
@@ -99,6 +112,16 @@ export interface Conflict {
   cboVote?: string | null;
   csoVote?: string | null;
   escalatedToMd?: boolean;
+  /** Sale-approval clock stopped when the conflict opened (S10 → S14). */
+  salePausedAt?: string | null;
+  /** SCM's confirmation that the losing sale buyer was told after a rental win. */
+  buyerNotifiedAt?: string | null;
+  buyerNotifiedBy?: string | null;
+  /** Set when a sale win restarts the S10 window clock. */
+  saleWindowRestartedAt?: string | null;
+  /** Domestic win: all BU quotes closed and every BU told. */
+  buQuotesClosedAt?: string | null;
+  busNotifiedAt?: string | null;
 }
 
 export interface ApprovalEntry {
@@ -146,6 +169,10 @@ export interface Crane {
   sales: SalesCheck;
   maintenance: MaintenanceCheck;
   buQuotes: BuQuote[];
+  /** BUs Strategy selected when floating this crane. Empty/legacy = all BUs. */
+  invitedBus?: string[];
+  /** BU whose quote was rejected by the CSO; cleared when that BU revises its quote. */
+  csoRejectedBu?: string | null;
   award: Award | null;
   catalogue: {
     uploaded: boolean;
@@ -157,6 +184,8 @@ export interface Crane {
   saleQuotes: SaleQuote[];
   /** Index of the quote SCM sent for FP&A price validation / management approval. */
   selectedSaleQuoteIndex?: number | null;
+  /** Start of the current S10 sale-approval window; reset when a conflict sale wins. */
+  saleWindowStartedAt?: string | null;
   scrapQuotes?: ScrapQuote[];
   selectedScrapQuoteIndex?: number | null;
   claimBack: ClaimBack | null;
@@ -192,6 +221,8 @@ export interface CraneFilters {
   type?: string;
   cycleId?: string;
   role?: string;
+  /** Identity of a BU login, used to scope the crane list to invited BUs only. */
+  buCode?: string | null;
 }
 
 export interface CraneListResult {

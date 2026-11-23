@@ -13,6 +13,7 @@ import {
   type Role,
 } from "@/lib/firm/workflow";
 import { ROLE_MAP } from "@/lib/firm/workflow";
+import { buCodeForUser } from "@/lib/firm/bu";
 import { dateLabel } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -50,7 +51,7 @@ export default async function CraneDetailPage({ params }: { params: Promise<{ id
   const user = await requireUser();
   const { id } = await params;
   const crane = await getCrane(decodeURIComponent(id));
-  if (!crane || !roleAllowsCrane(user.role, crane)) notFound();
+  if (!crane || !roleAllowsCrane(user.role, crane, buCodeForUser(user))) notFound();
   const meta = STATUS_MAP[crane.status];
   const role = ROLE_MAP[crane.audit.at(-1)?.actorRole as Role];
 
@@ -92,6 +93,9 @@ export default async function CraneDetailPage({ params }: { params: Promise<{ id
           <Section title="Workflow position" icon={<ShieldCheck size={15} className="text-brand" />}>
             <div className="grid gap-3 sm:grid-cols-2">
               <Row label="Current status" value={<StatusChip status={crane.status} />} />
+              {crane.saleWindowStartedAt && (
+                <Row label="Sale window started" value={new Date(crane.saleWindowStartedAt).toLocaleString()} />
+              )}
               <Row label="Layer / type" value={`${meta.layer} · ${meta.type}`} />
               <Row label="Cycle impact" value={meta.impact} />
               <Row label="Cycle" value={crane.cycleId} />
@@ -142,6 +146,11 @@ export default async function CraneDetailPage({ params }: { params: Promise<{ id
                     <span className={quote.interested ? "badge badge-healthy" : "badge badge-slate"}>
                       {quote.interested ? "Interested" : "Not interested"}
                     </span>
+                    {quote.closedAt && (
+                      <span className="badge badge-red" title={quote.closedReason ?? "BU quote closed"}>
+                        Closed · {new Date(quote.closedAt).toLocaleDateString()}
+                      </span>
+                    )}
                     <span className="text-muted">
                       {quote.ratePerMonth ? `₹${quote.ratePerMonth.toLocaleString("en-IN")}/mo` : "—"} · {quote.durationMonths ?? "—"} mo · yield {quote.expectedYieldPct ?? "—"}%
                     </span>
@@ -196,6 +205,12 @@ export default async function CraneDetailPage({ params }: { params: Promise<{ id
                     {crane.claimBack.customer} · ₹{crane.claimBack.rate.toLocaleString("en-IN")}/mo · {crane.claimBack.durationMonths} months · SO expected {crane.claimBack.expectedSoDate}
                   </div>
                   <div className="mt-1 text-[12px] text-faint">“{crane.claimBack.reason}” · {crane.claimBack.createdBy}</div>
+                  {crane.claimBack.rentalSoDueAt && (
+                    <div className="mt-1 text-[11px] text-faint">Rental SO due by {crane.claimBack.rentalSoDueAt} · no SO returns the crane to S09</div>
+                  )}
+                  {crane.claimBack.reservationDueAt && (
+                    <div className="mt-1 text-[11px] text-faint">BU reservation / SAP transfer due by {crane.claimBack.reservationDueAt} · otherwise back to S09</div>
+                  )}
                 </div>
               )}
               {crane.conflict && (
@@ -204,6 +219,20 @@ export default async function CraneDetailPage({ params }: { params: Promise<{ id
                   <div className="mt-1">Decided by {crane.conflict.decidedBy} · status {crane.conflict.status}</div>
                   {crane.conflict.winner && <div className="mt-1">Outcome: {crane.conflict.winner}</div>}
                   {crane.conflict.reason && <div className="mt-1 text-[12px] opacity-80">“{crane.conflict.reason}”</div>}
+                  {crane.conflict.salePausedAt && (
+                    <div className="mt-1 text-[11px] opacity-80">Sale window paused {new Date(crane.conflict.salePausedAt).toLocaleString()}</div>
+                  )}
+                  {crane.conflict.saleWindowRestartedAt && (
+                    <div className="mt-1 text-[11px] opacity-80">Sale window restarted {new Date(crane.conflict.saleWindowRestartedAt).toLocaleString()}</div>
+                  )}
+                  {crane.conflict.buyerNotifiedAt && (
+                    <div className="mt-1 text-[11px] opacity-80">Buyer notified by {crane.conflict.buyerNotifiedBy} · {new Date(crane.conflict.buyerNotifiedAt).toLocaleString()}</div>
+                  )}
+                  {(crane.conflict.buQuotesClosedAt || crane.conflict.busNotifiedAt) && (
+                    <div className="mt-1 text-[11px] opacity-80">
+                      BU quotes closed and all BUs notified · {new Date(crane.conflict.busNotifiedAt ?? crane.conflict.buQuotesClosedAt!).toLocaleString()}
+                    </div>
+                  )}
                 </div>
               )}
             </Section>

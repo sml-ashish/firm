@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { ActionForm } from "@/components/approval-actions";
+import { saleQuoteStillValid } from "@/lib/firm/workflow";
 
 type SaleQuoteView = {
   buyer: string;
@@ -11,6 +13,8 @@ type SaleQuoteView = {
   date: string;
   fpnaValidated: boolean;
   validatedBy: string | null;
+  rejectedBy?: string | null;
+  rejectedAt?: string | null;
 };
 
 type ScmSaleCrane = {
@@ -28,9 +32,10 @@ export function ScmSaleQuoteButton({ crane, role }: { crane: ScmSaleCrane; role:
   const selected = crane.selectedSaleQuoteIndex ?? -1;
   const selectedQuote = crane.saleQuotes[selected] ?? null;
   const atS10 = crane.status === "S10";
+  const [open, setOpen] = useState(false);
 
   return (
-    <Dialog.Root>
+    <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger asChild>
         <button type="button" className="btn btn-secondary h-8 px-2.5 text-[12px]">
           {atS10 ? "Sent for check" : `Quotes (${crane.saleQuotes.length})`}
@@ -66,7 +71,18 @@ export function ScmSaleQuoteButton({ crane, role }: { crane: ScmSaleCrane; role:
             </div>
           )}
 
-          {crane.saleQuotes.length > 0 && (
+          {!atS10 && selectedQuote && (
+            <div className="mt-4 rounded-lg border border-[color-mix(in_srgb,var(--brand)_30%,transparent)] bg-brand-soft p-3 text-[12px] text-brand-ink">
+              <div className="font-semibold">{selectedQuote.buyer}'s quotation is held from the paused sale.</div>
+              <div className="mt-1">
+                {saleQuoteStillValid(selectedQuote.date)
+                  ? `Dated ${selectedQuote.date} · still valid · send it again to revive the sale (FP&A will recheck the price).`
+                  : `Dated ${selectedQuote.date} · no longer valid · attach a fresh quotation instead.`}
+              </div>
+            </div>
+          )}
+
+          {crane.saleQuotes.some((quote) => !quote.rejectedBy) && (
             <div className="mt-4 overflow-hidden rounded-lg border border-line">
               <table className="w-full text-left text-[12px]">
                 <thead className="bg-panel-2 text-[11px] font-bold uppercase tracking-[0.08em] text-faint">
@@ -79,27 +95,31 @@ export function ScmSaleQuoteButton({ crane, role }: { crane: ScmSaleCrane; role:
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line">
-                  {crane.saleQuotes.map((quote, index) => (
-                    <tr key={`${quote.buyer}-${index}`} className="transition hover:bg-panel-2">
-                      <td className="px-3 py-2.5 font-medium text-ink">{quote.buyer}</td>
-                      <td className="px-3 py-2.5 text-muted">{quote.market}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums text-muted">{inr(quote.value)}</td>
-                      <td className="px-3 py-2.5 text-muted">{quote.date}</td>
-                      <td className="px-3 py-2.5 text-right">
-                        {!atS10 && (
-                          <ActionForm
-                            craneId={crane.id}
-                            kind="SELECT_SALE_QUOTE"
-                            label="Send to FP&A → S10"
-                            role={role}
-                            extra={<input type="hidden" name="quoteIndex" value={index} />}
-                            confirmTitle="Send quotation for price check?"
-                            confirmBody={`${quote.buyer}'s quotation of ${inr(quote.value)} will move the crane to S10 for FP&A price validation and management approval.`}
-                          />
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                  {crane.saleQuotes
+                    .map((quote, index) => ({ quote, index }))
+                    .filter(({ quote }) => !quote.rejectedBy)
+                    .map(({ quote, index }) => (
+                      <tr key={`${quote.buyer}-${index}`} className="transition hover:bg-panel-2">
+                        <td className="px-3 py-2.5 font-medium text-ink">{quote.buyer}</td>
+                        <td className="px-3 py-2.5 text-muted">{quote.market}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums text-muted">{inr(quote.value)}</td>
+                        <td className="px-3 py-2.5 text-muted">{quote.date}</td>
+                        <td className="px-3 py-2.5 text-right">
+                          {!atS10 ? (
+                            <ActionForm
+                              craneId={crane.id}
+                              kind="SELECT_SALE_QUOTE"
+                              label="Send to FP&A → S10"
+                              role={role}
+                              disabled={!saleQuoteStillValid(quote.date)}
+                              extra={<input type="hidden" name="quoteIndex" value={index} />}
+                              confirmTitle="Send quotation for price check?"
+                              confirmBody={`${quote.buyer}'s quotation of ${inr(quote.value)} will move the crane to S10 for FP&A price validation and management approval. All other quotations will be rejected.`}
+                            />
+                          ) : null}
+                        </td>
+                      </tr>
+                    ))}
                 </tbody>
               </table>
             </div>
@@ -113,6 +133,7 @@ export function ScmSaleQuoteButton({ crane, role }: { crane: ScmSaleCrane; role:
                 kind="SUBMIT_SALE_QUOTE"
                 label="Save quotation"
                 role={role}
+                onSuccess={() => setOpen(false)}
                 extra={
                   <div className="grid w-full gap-2 sm:grid-cols-2">
                     <label className="flex flex-col gap-1 text-[11px] font-medium text-muted">
@@ -137,6 +158,20 @@ export function ScmSaleQuoteButton({ crane, role }: { crane: ScmSaleCrane; role:
                     </label>
                   </div>
                 }
+              />
+            </div>
+          )}
+
+          {!atS10 && (
+            <div className="mt-4 border-t border-line pt-4">
+              <ActionForm
+                craneId={crane.id}
+                kind="NO_BUYER_TO_SCRAP"
+                label="No buyer → scrap approval (S11)"
+                role={role}
+                tone="secondary"
+                confirmTitle="Send for scrap approval?"
+                confirmBody="This closes the sale window and asks MD to decide on a scrap sale (S11)."
               />
             </div>
           )}

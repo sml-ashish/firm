@@ -1,10 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { ActionForm } from "@/components/approval-actions";
-
-const BUS = ["Middle East", "South East Asia", "West Africa", "Europe", "Americas"];
+import { INTERNATIONAL_BUS, buLabel } from "@/lib/firm/bu";
 
 type BuCrane = {
   id: string;
@@ -14,12 +14,22 @@ type BuCrane = {
 };
 
 /** International BU's quote submission, opened from the crane register. */
-export function BuQuoteButton({ crane, role }: { crane: BuCrane; role: string }) {
+export function BuQuoteButton({
+  crane,
+  role,
+  buCode,
+}: {
+  crane: BuCrane;
+  role: string;
+  buCode?: string | null;
+}) {
+  const ownQuotes = buCode ? crane.buQuotes.filter((quote) => quote.bu === buCode) : crane.buQuotes;
+  const [open, setOpen] = useState(false);
   return (
-    <Dialog.Root>
+    <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger asChild>
         <button type="button" className="btn btn-secondary h-8 px-2.5 text-[12px]">
-          {crane.buQuotes.length ? `Quote (${crane.buQuotes.length})` : "Submit quote"}
+          {ownQuotes.length ? `Quote (${ownQuotes.length})` : "Submit quote"}
         </button>
       </Dialog.Trigger>
       <Dialog.Portal>
@@ -41,12 +51,12 @@ export function BuQuoteButton({ crane, role }: { crane: BuCrane; role: string })
             </Dialog.Close>
           </div>
 
-          {crane.buQuotes.length > 0 && (
+          {ownQuotes.length > 0 && (
             <div className="mt-4 rounded-lg border border-line bg-panel-2 p-3">
-              <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-faint">Quotes on file</div>
+              <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-faint">Your quote on file</div>
               <ul className="mt-2 space-y-0.5 text-[12px] text-muted">
-                {crane.buQuotes.map((quote) => (
-                  <li key={quote.bu}>· {quote.bu} — {quote.interested ? "Interested" : "Not interested"} · {new Date(quote.revisedAt).toLocaleString()}</li>
+                {ownQuotes.map((quote) => (
+                  <li key={quote.bu}>· {buLabel(quote.bu)} — {quote.interested ? "Interested" : "Not interested"} · {new Date(quote.revisedAt).toLocaleString()}</li>
                 ))}
               </ul>
             </div>
@@ -58,12 +68,22 @@ export function BuQuoteButton({ crane, role }: { crane: BuCrane; role: string })
               kind="SUBMIT_BU_QUOTE"
               label="Submit / revise quote"
               role={role}
+              onSuccess={() => setOpen(false)}
               extra={
                 <div className="grid w-full gap-2 sm:grid-cols-2">
-                  <select name="bu" required className="select h-9" aria-label="Your BU">
-                    <option value="">Select your BU</option>
-                    {BUS.map((bu) => <option key={bu} value={bu}>{bu}</option>)}
-                  </select>
+                  {buCode ? (
+                    <>
+                      <div className="flex h-9 items-center rounded-lg border border-line bg-panel-2 px-3 text-[12px] text-muted">
+                        Your BU: <strong className="ml-1 text-ink">{buLabel(buCode)}</strong>
+                      </div>
+                      <input type="hidden" name="bu" value={buCode} />
+                    </>
+                  ) : (
+                    <select name="bu" required className="select h-9" aria-label="Your BU">
+                      <option value="">Select your BU</option>
+                      {INTERNATIONAL_BUS.map((bu) => <option key={bu} value={bu}>{buLabel(bu)}</option>)}
+                    </select>
+                  )}
                   <select name="interested" className="select h-9" aria-label="Interested">
                     <option value="true">Interested</option>
                     <option value="false">Not interested</option>

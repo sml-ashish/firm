@@ -396,6 +396,11 @@ export function CraneDrawer({
                               <span className={quote.interested ? "badge badge-healthy" : "badge badge-slate"}>
                                 {quote.interested ? "Interested" : "Not interested"}
                               </span>
+                              {quote.closedAt && (
+                                <span className="badge badge-red" title={quote.closedReason ?? "BU quote closed"}>
+                                  Closed · {dateTimeLabel(quote.closedAt)}
+                                </span>
+                              )}
                               <span className="text-muted tabular-nums">
                                 {quote.ratePerMonth === null ? "—" : inr(quote.ratePerMonth)}/mo ·{" "}
                                 {quote.durationMonths ?? "—"} mo · yield{" "}
@@ -485,6 +490,13 @@ export function CraneDrawer({
                         <div className="mt-1 text-faint">
                           “{crane.claimBack.reason}” · {crane.claimBack.createdBy}
                         </div>
+                        {(crane.claimBack.reservationDueAt || crane.claimBack.rentalSoDueAt) && (
+                          <div className="mt-1 text-faint">
+                            {crane.claimBack.reservationDueAt
+                              ? `BU reservation / SAP transfer due by ${crane.claimBack.reservationDueAt} · otherwise back to S09`
+                              : `Rental SO due by ${crane.claimBack.rentalSoDueAt} · otherwise back to S09`}
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -499,6 +511,22 @@ export function CraneDrawer({
                         {crane.conflict.winner && <div className="mt-1">Outcome: {crane.conflict.winner}</div>}
                         {crane.conflict.reason && (
                           <div className="mt-1 opacity-80">“{crane.conflict.reason}”</div>
+                        )}
+                        {crane.conflict.buyerNotifiedAt && (
+                          <div className="mt-1 opacity-80">
+                            Buyer notified by {crane.conflict.buyerNotifiedBy} · {new Date(crane.conflict.buyerNotifiedAt).toLocaleString()}
+                          </div>
+                        )}
+                        {(crane.conflict.cboVote || crane.conflict.csoVote) && (
+                          <div className="mt-1 opacity-80">
+                            Votes · CBO {crane.conflict.cboVote ?? "pending"} / CSO {crane.conflict.csoVote ?? "pending"}
+                            {crane.conflict.escalatedToMd ? " · escalated to MD/CEO" : ""}
+                          </div>
+                        )}
+                        {(crane.conflict.buQuotesClosedAt || crane.conflict.busNotifiedAt) && (
+                          <div className="mt-1 opacity-80">
+                            BU quotes closed and all BUs notified · {dateTimeLabel(crane.conflict.busNotifiedAt ?? crane.conflict.buQuotesClosedAt!)}
+                          </div>
                         )}
                       </div>
                     )}

@@ -15,15 +15,16 @@ const ALLOWED: Record<string, Role[]> = {
   CLOSE_CATALOGUE_WINDOW: ["MARKETING", "GLOBAL_ADMIN"],
   FLOAT_TO_BUS: ["STRATEGY", "GLOBAL_ADMIN"],
   SUBMIT_BU_QUOTE: ["BU", "STRATEGY", "GLOBAL_ADMIN"],
+  AWARD_BU_DIRECT: ["STRATEGY", "GLOBAL_ADMIN"],
   AWARD_BU: ["STRATEGY", "GLOBAL_ADMIN"],
   NO_TAKER_TO_SALE: ["STRATEGY", "GLOBAL_ADMIN"],
-  APPROVE_AWARD: ["STRATEGY", "CSO", "GLOBAL_ADMIN"],
-  REJECT_AWARD: ["STRATEGY", "CSO", "GLOBAL_ADMIN"],
+  APPROVE_AWARD: ["CSO", "GLOBAL_ADMIN"],
+  REJECT_AWARD: ["CSO", "GLOBAL_ADMIN"],
   SUBMIT_SALE_QUOTE: ["SCM", "GLOBAL_ADMIN"],
   SELECT_SALE_QUOTE: ["SCM", "GLOBAL_ADMIN"],
   VALIDATE_SALE_PRICE: ["FPNA", "GLOBAL_ADMIN"],
-  APPROVE_SALE: ["CBO", "MD", "GLOBAL_ADMIN"],
-  REJECT_SALE: ["CBO", "MD", "GLOBAL_ADMIN"],
+  APPROVE_SALE: ["MD", "GLOBAL_ADMIN"],
+  REJECT_SALE: ["MD", "GLOBAL_ADMIN"],
   APPROVE_SCRAP: ["MD", "GLOBAL_ADMIN"],
   REJECT_SCRAP: ["MD", "GLOBAL_ADMIN"],
   APPROVE_CLAIM: ["CBO", "CSO", "SALES", "STRATEGY", "GLOBAL_ADMIN"],
@@ -31,6 +32,14 @@ const ALLOWED: Record<string, Role[]> = {
   RESOLVE_CONFLICT: ["CBO", "CSO", "STRATEGY", "MD", "GLOBAL_ADMIN"],
   DEPLOY: ["STRATEGY", "GLOBAL_ADMIN"],
   RECORD_SO: ["SALES", "STRATEGY", "SCM", "GLOBAL_ADMIN"],
+  REQUEST_CLAIM_BACK: ["SALES", "STRATEGY"],
+  RECORD_RENTAL_SO: ["SALES", "STRATEGY", "GLOBAL_ADMIN"],
+  NOTIFY_SALE_BUYER: ["SCM", "GLOBAL_ADMIN"],
+  NO_BUYER_TO_SCRAP: ["SCM", "GLOBAL_ADMIN"],
+  SUBMIT_SCRAP_QUOTE: ["SCM", "GLOBAL_ADMIN"],
+  SELECT_SCRAP_QUOTE: ["SCM", "GLOBAL_ADMIN"],
+  VALIDATE_SCRAP_PRICE: ["FPNA", "GLOBAL_ADMIN"],
+  RECORD_SCRAP_SO: ["SCM", "GLOBAL_ADMIN"],
 };
 
 export function ActionForm({
@@ -40,9 +49,11 @@ export function ActionForm({
   tone = "primary",
   role,
   requireComment = false,
+  disabled = false,
   extra,
   confirmTitle,
   confirmBody,
+  onSuccess,
 }: {
   craneId: string;
   kind: string;
@@ -50,16 +61,22 @@ export function ActionForm({
   tone?: "primary" | "secondary" | "danger";
   role: string;
   requireComment?: boolean;
+  disabled?: boolean;
   extra?: React.ReactNode;
   confirmTitle?: string;
   confirmBody?: string;
+  onSuccess?: () => void;
 }) {
   const [state, action, pending] = useActionState<ActionState, FormData>(craneAction, null);
   const [open, setOpen] = useState(false);
   const [comment, setComment] = useState("");
   useEffect(() => {
-    if (state?.ok) toast.success(state.ok);
-  }, [state]);
+    if (state?.ok) {
+      toast.success(state.ok);
+      setOpen(false);
+      onSuccess?.();
+    }
+  }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
   const allowed = ALLOWED[kind]?.includes(role as Role);
 
   if (!allowed) {
@@ -96,7 +113,7 @@ export function ActionForm({
     return (
       <form action={action} className="flex flex-wrap items-end gap-2">
         {fields}
-        <button type="submit" className={`btn btn-${tone} h-9`} disabled={pending || (requireComment && !comment.trim())}>
+        <button type="submit" className={`btn btn-${tone} h-9`} disabled={disabled || pending || (requireComment && !comment.trim())}>
           {pending ? "Saving…" : label}
         </button>
         {state?.error && <span className="w-full text-[12px] font-medium text-nd-ink">{state.error}</span>}
@@ -107,7 +124,7 @@ export function ActionForm({
 
   return (
     <>
-      <button type="button" className={`btn btn-${tone} h-9`} onClick={() => setOpen(true)}>
+      <button type="button" className={`btn btn-${tone} h-9`} onClick={() => setOpen(true)} disabled={disabled || pending}>
         {label}
       </button>
       <AlertDialog.Root open={open} onOpenChange={setOpen}>
@@ -128,11 +145,9 @@ export function ActionForm({
                 <AlertDialog.Cancel asChild>
                   <button type="button" className="btn btn-secondary">Cancel</button>
                 </AlertDialog.Cancel>
-                <AlertDialog.Action asChild>
-                  <button type="submit" className={`btn btn-${tone}`} disabled={pending || (requireComment && !comment.trim())}>
-                    {pending ? "Saving…" : `Confirm ${label.toLowerCase()}`}
-                  </button>
-                </AlertDialog.Action>
+                <button type="submit" className={`btn btn-${tone}`} disabled={disabled || pending || (requireComment && !comment.trim())}>
+                  {pending ? "Saving…" : `Confirm ${label.toLowerCase()}`}
+                </button>
               </div>
             </form>
           </AlertDialog.Content>

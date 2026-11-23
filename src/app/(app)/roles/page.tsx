@@ -26,7 +26,7 @@ export default async function RolesPage() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         {ROLES.map((role) => {
-          const account = users.find((user) => user.role === role.role);
+          const accounts = users.filter((user) => user.role === role.role);
           return (
             <section key={role.role} className="card p-4">
               <div className="flex items-start justify-between gap-2">
@@ -36,13 +36,15 @@ export default async function RolesPage() {
                 </div>
                 <span className={`badge ${TONE[role.tone] ?? "badge-slate"}`}>{role.short}</span>
               </div>
-              <div className="mt-3 flex items-center gap-2 rounded-lg border border-line bg-panel-2 px-2.5 py-2">
-                <UsersRound size={14} className="text-brand" />
-                {account ? (
-                  <span className="text-[12px] text-muted">
-                    <strong className="text-ink">{account.name}</strong> · {account.email}
-                  </span>
-                ) : (
+              <div className="mt-3 space-y-1.5 rounded-lg border border-line bg-panel-2 px-2.5 py-2">
+                {accounts.length > 0 ? accounts.map((account) => (
+                  <div key={account.id} className="flex items-center gap-2">
+                    <UsersRound size={14} className="shrink-0 text-brand" />
+                    <span className="text-[12px] text-muted">
+                      <strong className="text-ink">{account.name}</strong> · {account.email}
+                    </span>
+                  </div>
+                )) : (
                   <span className="text-[12px] text-faint">No account seeded</span>
                 )}
               </div>
